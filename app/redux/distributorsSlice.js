@@ -2,14 +2,13 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import axios from 'axios'
-
+import API_BASE_URL from './apiconfig'
 // ==============================
 // 🔹 API URLs
 // ==============================
-const BASE_URL = 'http://localhost:5000/api'
-const DISTRIBUTORS_URL = `${BASE_URL}/distributors`
-const FARMERS_URL = `${BASE_URL}/farmers`
-const CATTLE_URL = `${BASE_URL}/cattle`
+const DISTRIBUTORS_URL = `${API_BASE_URL}/distributors`
+const FARMERS_URL = `${API_BASE_URL}/farmers`
+const CATTLE_URL = `${API_BASE_URL}/cattle`
 
 // ==============================
 // 🔹 Distributor CRUD
@@ -29,13 +28,16 @@ export const createDistributor = createAsyncThunk('distributors/create', async (
   return data
 })
 
+// ✅ Replace your current updateDistributor with this:
 export const updateDistributor = createAsyncThunk(
   'distributors/update',
-  async ({ id, updates }) => {
+  async (payload) => {
+    const { id, ...updates } = payload
     const { data } = await axios.put(`${DISTRIBUTORS_URL}/${id}`, updates)
     return data
   }
 )
+
 
 export const deleteDistributor = createAsyncThunk('distributors/delete', async (id) => {
   await axios.delete(`${DISTRIBUTORS_URL}/${id}`)

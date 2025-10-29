@@ -11,6 +11,9 @@ import {
   TrendingUp,
   TrendingDown,
   Plus,
+  Package,
+  Users,
+  ShoppingBag,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import FarmerForm from './FarmerForm'
@@ -25,11 +28,19 @@ import {
   fetchFarmers, // <- new
 } from '../redux/farmersSlice'
 
-// ✅ Card for small stats
-const StatCard = ({ title, value, changeText, changeColor, iconUrl, iconAlt, valueColor, trendType }) => {
+const StatCard = ({
+  title,
+  value,
+  changeText,
+  changeColor,
+  icon,
+  valueColor,
+  trendType = 'none',
+}) => {
   const TrendIcon = trendType === 'up' ? TrendingUp : TrendingDown
+
   return (
-    <div className="rounded-xl p-4 border border-gray-200 flex items-center justify-between bg-white shadow-sm">
+    <div className="rounded-xl p-4 border border-gray-200 flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-shadow duration-200">
       <div>
         <h3 className="text-sm text-gray-600 mb-1">{title}</h3>
         <p className={`text-2xl font-semibold ${valueColor}`}>{value}</p>
@@ -40,19 +51,15 @@ const StatCard = ({ title, value, changeText, changeColor, iconUrl, iconAlt, val
           </p>
         )}
       </div>
-      <div className="p-2 rounded-full bg-gray-100 border border-gray-200">
-        <img
-          src={iconUrl}
-          alt={iconAlt}
-          className="w-6 h-6 opacity-70"
-          onError={(e) => {
-            e.currentTarget.src = `https://placehold.co/24x24/eee/999?text=${(iconAlt && iconAlt.charAt(0)) || '?'}`
-          }}
-        />
+
+      {/* icon area */}
+      <div className="p-3 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center">
+        {icon}
       </div>
     </div>
   )
 }
+
 
 // ---------------------- helper mappers ----------------------
 const mapApiFarmerToForm = (apiFarmer) => ({
@@ -285,32 +292,61 @@ export default function DistributorDetailPanel({ distributor, onBack }) {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#8b5cf6] rounded-xl p-4 border border-[#a78bfa] flex items-center justify-between text-white shadow-sm">
-            <div className="flex flex-col">
-              <h3 className="text-sm font-semibold mb-1">Your orders are growing strong 💪</h3>
-              <p className="text-2xl font-bold">450 <span className="text-lg font-semibold text-gray-100">Total sales</span></p>
-              <p className="text-xs text-[#a7f3d0] flex items-center gap-1">+22% Compared to last month</p>
-            </div>
-            <img src="/icons/promo-bag.svg" alt="Growing Orders Graphic" className="w-20 h-20 opacity-90"/>
-          </div>
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-          <StatCard title="Total Stock"
-            value={inwards.reduce((acc, i) => acc + (i.total_quantity || 0), 0) - inwards.reduce((acc, i) => acc + (i.used_quantity || 0), 0)}
-            changeText="5% more than last month" changeColor="text-green-600"
-            iconUrl="/icons/store.svg" iconAlt="Store Icon" valueColor="text-gray-800" trendType="up"
-          />
+  {/* Highlight Card */}
+  <div className="bg-gradient-to-r from-[#8b5cf6] to-[#7c3aed] rounded-xl p-4 border border-[#a78bfa]/40 flex items-center justify-between text-white shadow-md">
+    <div className="flex flex-col">
+      <h3 className="text-sm font-semibold mb-1">Your orders are growing strong 💪</h3>
+      <p className="text-2xl font-bold">
+        450 <span className="text-lg font-medium text-violet-100">Total sales</span>
+      </p>
+      <p className="text-xs text-green-200 flex items-center gap-1">
+        <TrendingUp className="w-3 h-3" /> +22% compared to last month
+      </p>
+    </div>
+    <div className="p-2 bg-white/10 rounded-full">
+      <ShoppingBag className="w-12 h-12 text-white" />
+    </div>
+  </div>
 
-          <StatCard title="Total Farmers"
-            value={farmers.length} changeText="5% more than last month" changeColor="text-green-600"
-            iconUrl="/icons/user-group.svg" iconAlt="Farmers Icon" valueColor="text-gray-800" trendType="up"
-          />
+  {/* Total Stock */}
+  <StatCard
+    title="Total Stock"
+    value={
+      inwards.reduce((acc, i) => acc + (i.total_quantity || 0), 0) -
+      inwards.reduce((acc, i) => acc + (i.used_quantity || 0), 0)
+    }
+    changeText="5% more than last month"
+    changeColor="text-green-600"
+    icon={<Package className="w-8 h-8 text-[#8b5cf6]" />}
+    valueColor="text-gray-800"
+    trendType="up"
+  />
 
-          <StatCard title="Total Orders"
-            value={currentDistributor?.totalOrders || 0} changeText="5% less than last month" changeColor="text-red-600"
-            iconUrl="/icons/shopping-cart.svg" iconAlt="Orders Icon" valueColor="text-gray-800" trendType="down"
-          />
-        </div>
+  {/* Total Farmers */}
+  <StatCard
+    title="Total Farmers"
+    value={farmers.length}
+    changeText="5% more than last month"
+    changeColor="text-green-600"
+    icon={<Users className="w-8 h-8 text-[#16a34a]" />}
+    valueColor="text-gray-800"
+    trendType="up"
+  />
+
+  {/* Total Orders */}
+  <StatCard
+    title="Total Orders"
+    value={currentDistributor?.totalOrders || 0}
+    changeText="5% less than last month"
+    changeColor="text-red-600"
+    icon={<ShoppingBag className="w-8 h-8 text-[#dc2626]" />}
+    valueColor="text-gray-800"
+    trendType="down"
+  />
+
+</div>
 
         {/* Overview & Address */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

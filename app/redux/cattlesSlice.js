@@ -2,11 +2,10 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import axios from 'axios'
+import API_BASE_URL from './apiconfig'
 
-// ==============================
-// 🔹 API Base
-// ==============================
-const API_URL = 'http://localhost:5000/api/cattle'
+const API_URL = `${API_BASE_URL}/cattle`
+
 
 // ==============================
 // 🔹 Async Thunks (CRUD)

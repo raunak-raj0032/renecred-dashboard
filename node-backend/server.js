@@ -14,7 +14,10 @@ const app = express()
 // ✅ Enable CORS so frontend can call backend API
 app.use(
   cors({
-    origin: 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',
+      'https://beautiful-dolphin-b8e9a0.netlify.app', // ✅ Netlify frontend
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })

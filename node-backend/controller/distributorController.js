@@ -20,7 +20,7 @@ export const getDistributor = async (req, res) => {
     const { data, error } = await supabase
       .from('distributors')
       .select('*')
-      .eq('distributor_id', req.params.id) // ✅ use distributor_id (your Supabase key)
+      .eq('id', req.params.id) // ✅ use id (your Supabase key)
       .single()
 
     if (error && error.code === 'PGRST116') {
@@ -56,7 +56,7 @@ export const updateDistributor = async (req, res) => {
     const { data, error } = await supabase
       .from('distributors')
       .update(req.body)
-      .eq('distributor_id', req.params.id)
+      .eq('id', req.params.id)
       .select()
       .single()
 
@@ -73,7 +73,7 @@ export const deleteDistributor = async (req, res) => {
     const { error } = await supabase
       .from('distributors')
       .delete()
-      .eq('distributor_id', req.params.id)
+      .eq('id', req.params.id)
 
     if (error) throw error
     res.json({ success: true, message: 'Distributor deleted successfully' })

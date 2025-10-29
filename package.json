@@ -23,6 +23,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.14.4",
     "@tailwindcss/postcss": "^4.1.16",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -29,7 +29,7 @@
     }
   },
   "include": [
-    "next-env.d.ts",
+    "next-env.d.js",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
@@ -37,7 +37,7 @@
     "**/*.mts",
     ".next\\dev/types/**/*.ts",
     ".next\\dev/types/**/*.ts"
-, "node-backend/services/farmerService.js", "node-backend/server.js", "node-backend/services/distributorService.js", "node-backend/services/cattleService.js", "node-backend/controller/cattleController.js", "node-backend/controller/distributorController.js", "node-backend/controller/farmerController.js", "node-backend/routes/farmerRoutes.js", "app/redux/distributorsSlice.js", "app/redux/store.js", "app/redux/farmersSlice.js", "app/projects/page.jsx", "app/components/FarmerForm.jsx", "app/components/DistributorTable.jsx", "app/components/DistributorDetailPanel.jsx"  ],
+, "node-backend/services/farmerService.js", "node-backend/server.js", "node-backend/services/distributorService.js", "node-backend/services/cattleService.js", "node-backend/controller/cattleController.js", "node-backend/controller/distributorController.js", "node-backend/controller/farmerController.js", "node-backend/routes/farmerRoutes.js", "app/redux/distributorsSlice.js", "app/redux/store.js", "app/redux/farmersSlice.js", "app/projects/page.jsx", "app/components/FarmerForm.jsx", "app/components/DistributorTable.jsx", "app/components/DistributorDetailPanel.jsx", "app/components/FormCard.jsx", "next.config.js"  ],
   "exclude": [
     "node_modules"
   ]

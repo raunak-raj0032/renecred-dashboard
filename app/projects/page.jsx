@@ -22,8 +22,9 @@ export default function ProjectsPage() {
           <div
             className="h-48 rounded-xl bg-cover bg-center shadow-md p-6 flex flex-col justify-center mb-6 relative"
             style={{
+              /* Unsplash image (royalty-free) — replace with your hosted image URL if you prefer */
               backgroundImage:
-                "url('https://placehold.co/1600x300/1a202c/ffffff?text=Project+Banner')",
+                "url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80')",
             }}
           >
             <h1 className="text-4xl font-bold text-white tracking-wide">CH4OW</h1>
