@@ -1,41 +1,86 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
+# =========================================
+# 📦 Node.js & Package Managers
+# =========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.pnpm-debug.log*
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# =========================================
+# 🧪 Testing & Coverage
+# =========================================
+coverage/
+.nyc_output/
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
+# =========================================
+# ⚛️ Next.js / React / Build Outputs
+# =========================================
+.next/
+out/
+build/
+dist/
+.cache/
 *.tsbuildinfo
 next-env.d.ts
+
+# =========================================
+# 🧰 Environment & Secrets
+# =========================================
+.env
+.env.*
+!.env.example
+*.pem
+
+# =========================================
+# 💻 Editor & OS Files
+# =========================================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+.vscode/
+.idea/
+*.swp
+
+# =========================================
+# 🚀 Deployment / Platform
+# =========================================
+.vercel/
+.netlify/
+firebase-debug.log
+functions/node_modules/
+
+# =========================================
+# 🐳 Docker
+# =========================================
+docker-compose.override.yml
+.dockerignore
+Dockerfile
+*.tar
+
+# =========================================
+# ⚙️ TypeScript
+# =========================================
+*.tsbuildinfo
+*.d.ts
+
+# =========================================
+# 🧱 Misc
+# =========================================
+pids
+*.pid
+*.seed
+*.pid.lock
+*.orig
+*.rej
+*.bak
+*.old
+*.cache/

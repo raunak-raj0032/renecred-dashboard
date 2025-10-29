@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    // Module system for ESM support
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2020",
+
+    // TypeScript interop and strictness
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Enable .ts imports and disable emit
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    // Environment and types
+    "lib": ["ESNext"],
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "services/farmerService.js", "server.js", "services/distributorService.js", "services/cattleService.js", "controller/cattleController.js", "controller/distributorController.js", "controller/farmerController.js", "routes/farmerRoutes.js"],
+  "exclude": ["node_modules", "dist"]
+}
