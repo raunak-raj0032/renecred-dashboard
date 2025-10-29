@@ -1,64 +1,98 @@
-import { farmerService } from '../services/farmerService.js'
+import { supabase } from '../supabaseClient.js'
 
-export const farmerController = {
-  async getAll(req, res) {
-    try {
-      const farmers = await farmerService.getAll()
-      res.json(farmers)
-    } catch (err) {
-      res.status(500).json({ error: err.message })
-    }
-  },
-
-  async getById(req, res) {
-    try {
-      const farmer = await farmerService.getById(req.params.id)
-      res.json(farmer)
-    } catch (err) {
-      res.status(404).json({ error: err.message })
-    }
-  },
-
-  async getByDistributor(req, res) {
-    try {
-      const farmers = await farmerService.getByDistributor(req.params.distributorId)
-      res.json(farmers)
-    } catch (err) {
-      res.status(404).json({ error: err.message })
-    }
-  },
-
-async create(req, res) {
+// --- GET ALL FARMERS ---
+export const getAllFarmers = async (req, res) => {
   try {
-    const payload = req.body
-    console.log(payload)
-    // If distributorId also comes as a URL param, use that as fallback
-    if (req.params.distributorId && !payload.farmerDetails?.distributor_id) {
-      payload.farmerDetails.distributor_id = req.params.distributorId
-    }
+    const { data, error } = await supabase
+      .from('farmers')
+      .select('*')
 
-    const farmer = await farmerService.create(payload)
-    res.status(201).json(farmer)
+    if (error) throw error
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// --- GET FARMER BY ID ---
+export const getFarmerById = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('farmers')
+      .select('*')
+      .eq('id', req.params.id)
+      .single()
+
+    if (error && error.code === 'PGRST116') {
+      return res.status(404).json({ error: 'Farmer not found' })
+    }
+    if (error) throw error
+
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// --- GET FARMERS BY DISTRIBUTOR ---
+export const getFarmersByDistributor = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('farmers')
+      .select('*')
+      .eq('distributor_id', req.params.distributorId)
+
+    if (error) throw error
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// --- CREATE FARMER ---
+export const createFarmer = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('farmers')
+      .insert(req.body)
+      .select()
+      .single()
+
+    if (error) throw error
+    res.status(201).json(data)
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
-},
+}
 
-  async update(req, res) {
-    try {
-      const farmer = await farmerService.update(req.params.id, req.body)
-      res.json(farmer)
-    } catch (err) {
-      res.status(400).json({ error: err.message })
-    }
-  },
+// --- UPDATE FARMER ---
+export const updateFarmer = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('farmers')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single()
 
-  async remove(req, res) {
-    try {
-      const result = await farmerService.remove(req.params.id)
-      res.json(result)
-    } catch (err) {
-      res.status(400).json({ error: err.message })
-    }
-  },
+    if (error) throw error
+    res.json(data)
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+}
+
+// --- DELETE FARMER ---
+export const deleteFarmer = async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('farmers')
+      .delete()
+      .eq('id', req.params.id)
+
+    if (error) throw error
+    res.json({ success: true, message: 'Farmer deleted successfully' })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
 }

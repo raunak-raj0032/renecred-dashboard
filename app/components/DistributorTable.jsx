@@ -27,7 +27,11 @@ import DistributorDetailPanel from './DistributorDetailPanel'
 
 export default function DistributorTable() {
   const dispatch = useDispatch()
-  const { data, loading, error } = useSelector((state) => state.distributors)
+  // NOTE: updated to match the new slice shape
+  const { distributors, loading, error } = useSelector((state) => state.distributors || {})
+
+  // safe array to avoid runtime .length errors
+  const distributorsList = distributors || []
 
   const [selectedDistributor, setSelectedDistributor] = useState(null)
   const [expandedRow, setExpandedRow] = useState(null)
@@ -62,6 +66,7 @@ export default function DistributorTable() {
     const formData = {
       distributorId: data.id,
       distributorName: data.name,
+      registrationNumber: data.registration_number,
       email: data.email,
       phone: data.phone_number,
       address: data.address,
@@ -197,7 +202,7 @@ export default function DistributorTable() {
               </tr>
             )}
 
-            {!loading && !error && data.length === 0 && (
+            {!loading && !error && distributorsList.length === 0 && (
               <tr>
                 <td colSpan={8} className="text-center py-6 text-gray-500">
                   No distributors found.
@@ -207,7 +212,7 @@ export default function DistributorTable() {
 
             {!loading &&
               !error &&
-              data.map((d, i) => (
+              distributorsList.map((d, i) => (
                 <React.Fragment key={d.id}>
                   <tr className="hover:bg-gray-50">
                     <td className="p-3 text-[#6b7280]">

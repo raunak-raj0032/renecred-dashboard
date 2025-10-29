@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import axios from 'axios'
 import {
   ChevronLeft,
   Filter,
@@ -15,13 +16,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import FarmerForm from './FarmerForm'
 import ConfirmationModal from './ConfirmationModal'
 import { useSelector, useDispatch } from 'react-redux'
+import { fetchDistributors } from '../redux/distributorsSlice'
 import {
   createFarmer,
   updateFarmer,
   deleteFarmer,
-  fetchDistributors,
-} from '../redux/distributorsSlice'
-import { fetchFarmerById } from '../redux/farmersSlice'
+  fetchFarmerById,
+  fetchFarmers, // <- new
+} from '../redux/farmersSlice'
 
 // ✅ Card for small stats
 const StatCard = ({ title, value, changeText, changeColor, iconUrl, iconAlt, valueColor, trendType }) => {
@@ -44,7 +46,7 @@ const StatCard = ({ title, value, changeText, changeColor, iconUrl, iconAlt, val
           alt={iconAlt}
           className="w-6 h-6 opacity-70"
           onError={(e) => {
-            e.currentTarget.src = `https://placehold.co/24x24/eee/999?text=${iconAlt.charAt(0) || '?'}`
+            e.currentTarget.src = `https://placehold.co/24x24/eee/999?text=${(iconAlt && iconAlt.charAt(0)) || '?'}`
           }}
         />
       </div>
@@ -52,6 +54,55 @@ const StatCard = ({ title, value, changeText, changeColor, iconUrl, iconAlt, val
   )
 }
 
+// ---------------------- helper mappers ----------------------
+const mapApiFarmerToForm = (apiFarmer) => ({
+  farmerDetails: {
+    distributor_id: apiFarmer.distributor_id || '',
+    farmerId: apiFarmer.id || '',
+    farmerName: apiFarmer.farmer_name || '',
+    whatsappNo: apiFarmer.whatsapp_no || '',
+    phoneNo: apiFarmer.phone_no || '',
+    email: apiFarmer.email || '',
+    address: apiFarmer.address || '',
+    state: apiFarmer.state || '',
+    city: apiFarmer.city || '',
+    pinCode: apiFarmer.pin_code || '',
+    aadharNo: apiFarmer.aadhar_no || '',
+  },
+  cattleList: (apiFarmer.cattle || []).map((c) => ({
+    id: c.id || c.cattle_id || `temp-${Math.random().toString(36).slice(2, 8)}`,
+    cattle_id: c.cattle_id || undefined,
+    age: c.age_range || '',
+    weight: c.weight_range || '',
+    type: c.cattle_type || '',
+  })),
+})
+
+const mapFormToApiPayload = (formData) => {
+  const fd = formData.farmerDetails || {}
+  const cList = formData.cattleList || []
+  return {
+    farmer_name: fd.farmerName,
+    whatsapp_no: fd.whatsappNo,
+    phone_no: fd.phoneNo,
+    email: fd.email,
+    address: fd.address,
+    city: fd.city,
+    state: fd.state,
+    pin_code: fd.pinCode,
+    aadhar_no: fd.aadharNo,
+    total_cattle: cList.length || 0,
+    __cattle: cList.map((c) => ({
+      id: c.id,
+      cattle_id: c.cattle_id,
+      age_range: c.age,
+      weight_range: c.weight,
+      cattle_type: c.type,
+    })),
+  }
+}
+
+// ---------------------- component ----------------------
 export default function DistributorDetailPanel({ distributor, onBack }) {
   const dispatch = useDispatch()
 
@@ -63,67 +114,33 @@ export default function DistributorDetailPanel({ distributor, onBack }) {
   const [deleteTargetFarmerId, setDeleteTargetFarmerId] = useState(null)
   const [formTitle, setFormTitle] = useState('Add Farmer')
 
-  const distributorsState = useSelector((state) => state.distributors)
-  const farmersState = useSelector((state) => state.farmers)
-  const distributors = distributorsState?.data || []
-  const selectedFarmer = farmersState?.selectedFarmer || null
+  // read distributors & farmers slices safely
+  const distributorsState = useSelector((state) => state.distributors || {})
+  const farmersState = useSelector((state) => state.farmers || {})
+  // support older shape (data) or new (distributors)
+  const distributors = distributorsState?.distributors || distributorsState?.data || []
+  const allFarmers = farmersState?.data || []
 
   const currentDistributor = useMemo(
     () => distributors.find((d) => d.id === distributor.id) || distributor,
     [distributors, distributor]
   )
 
-  const farmers = currentDistributor?.farmers || []
   const inwards = currentDistributor?.inwards || []
 
-  // ✅ Convert API farmer object → form-compatible data
-  const mapApiFarmerToForm = (apiFarmer) => ({
-    farmerDetails: {
-      distributor_id: apiFarmer.distributor || '',
-      farmerId: apiFarmer.id || '',
-      farmerName: apiFarmer.farmer_name || '',
-      whatsappNo: apiFarmer.whatsapp_no || '',
-      phoneNo: apiFarmer.phone_no || '',
-      email: apiFarmer.email || '',
-      address: apiFarmer.address || '',
-      state: apiFarmer.state || '',
-      city: apiFarmer.city || '',
-      pinCode: apiFarmer.pin_code || '',
-      aadharNo: apiFarmer.aadhar_no || '',
-    },
-    cattleList: (apiFarmer.cattle || []).map((c) => ({
-      id: c.cattle_id || c.id || `CA-${Math.random().toString(36).slice(2, 8)}`,
-      age: c.age_range || '',
-      weight: c.weight_range || '',
-      type: c.cattle_type || '',
-    })),
-  })
+  // ------------------- fetch all farmers (once or when distributor changes) -------------------
+  useEffect(() => {
+    // fetch all farmers to allow client-side filtering
+    dispatch(fetchFarmers())
+  }, [dispatch, distributor?.id])
 
-  // ✅ Convert form → API payload
-  const mapFormToApiPayload = (formData) => {
-    const fd = formData.farmerDetails || {}
-    const cattleList = formData.cattleList || []
-    return {
-      farmer_name: fd.farmerName,
-      whatsapp_no: fd.whatsappNo,
-      phone_no: fd.phoneNo,
-      email: fd.email,
-      address: fd.address,
-      city: fd.city,
-      state: fd.state,
-      pin_code: fd.pinCode,
-      aadhar_no: fd.aadharNo,
-      total_cattle: cattleList.length,
-      cattle: cattleList.map((c) => ({
-        cattle_id: c.id ? String(c.id) : undefined,
-        age_range: c.age,
-        weight_range: c.weight,
-        cattle_type: c.type,
-      })),
-    }
-  }
+  // filter farmers by distributor_id
+  const farmers = useMemo(() => {
+    if (!currentDistributor?.id) return []
+    return allFarmers.filter((f) => String(f.distributor_id) === String(currentDistributor.id))
+  }, [allFarmers, currentDistributor?.id])
 
-  // ✅ Add New Farmer
+  // ------------- add / edit farmer -------------
   const handleAddFarmer = () => {
     setEditFarmerData(null)
     setFormMode('add')
@@ -131,69 +148,123 @@ export default function DistributorDetailPanel({ distributor, onBack }) {
     setIsFarmerFormOpen(true)
   }
 
-const handleEditFarmer = async (farmer) => {
-  setFormMode('edit')
-  setFormTitle('Edit Farmer')
-
-  try {
-    const result = await dispatch(fetchFarmerById(farmer.id)).unwrap()
-
-    // ✅ Map API response → form structure
-    const mappedData = mapApiFarmerToForm(result)
-
-    // ✅ Clone object to always create a new reference
-    setEditFarmerData({ ...mappedData })
-
-    // ✅ Open form
-    setIsFarmerFormOpen(true)
-
-    console.log('🟢 Edit farmer triggered. New editFarmerData:', mappedData)
-  } catch (err) {
-    console.error('❌ Failed to fetch farmer details:', err)
-    alert('Failed to load farmer details. Please try again.')
-  }
-}
-
-
-  // ✅ Save farmer (add or update)
-  const handleSaveFarmer = async (formData) => {
-    const distributorId = currentDistributor?.id
-    if (!distributorId) return
-
-    const payload = mapFormToApiPayload(formData)
+  const handleEditFarmer = async (farmer) => {
+    setFormMode('edit')
+    setFormTitle('Edit Farmer')
 
     try {
-      if (formMode === 'add') {
-        await dispatch(createFarmer({ distributorId, farmer: payload })).unwrap()
-      } else {
-        const farmerId = formData.farmerDetails?.farmerId
-        if (!farmerId) return
-        await dispatch(updateFarmer({ id: farmerId, updates: payload })).unwrap()
-      }
-
-      setIsFarmerFormOpen(false)
-      await dispatch(fetchDistributors())
+      const result = await dispatch(fetchFarmerById(farmer.id)).unwrap()
+      const mapped = mapApiFarmerToForm(result)
+      setEditFarmerData({ ...mapped })
+      setIsFarmerFormOpen(true)
     } catch (err) {
-      console.error('❌ Failed to save farmer:', err)
+      console.error('Failed to fetch farmer details:', err)
+      alert('Failed to load farmer details. Please try again.')
     }
   }
 
-  // ✅ Delete Farmer flow
+  // ---------------- Save (create or update) ----------------
+  const handleSaveFarmer = async (formData) => {
+    const distributorId = currentDistributor?.id
+    if (!distributorId) {
+      alert('Distributor not available')
+      return
+    }
+
+    const mapped = mapFormToApiPayload(formData)
+    const cattlePayloadList = mapped.__cattle || []
+    const farmerPayload = { ...mapped }
+    delete farmerPayload.__cattle
+    farmerPayload.distributor_id = distributorId
+
+    try {
+      if (formMode === 'add') {
+        const createdFarmer = await dispatch(createFarmer(farmerPayload)).unwrap()
+        const createdFarmerId = createdFarmer.id
+        for (const c of cattlePayloadList) {
+          const isTemp = String(c.id).startsWith('temp-') || !c.id
+          if (isTemp) {
+            try {
+              await axios.post('http://localhost:5000/api/cattle', {
+                farmer_id: createdFarmerId,
+                cattle_id: c.cattle_id || undefined,
+                age_range: c.age_range,
+                weight_range: c.weight_range,
+                cattle_type: c.cattle_type,
+              })
+            } catch (err) {
+              console.error('Failed to create cattle after farmer creation:', err)
+            }
+          }
+        }
+        await dispatch(fetchDistributors())
+      } else {
+        const farmerId = formData.farmerDetails?.farmerId
+        if (!farmerId) {
+          alert('Farmer ID missing for update')
+          return
+        }
+        await dispatch(updateFarmer({ farmer_id: farmerId, updates: farmerPayload })).unwrap()
+
+        for (const c of cattlePayloadList) {
+          const isTemp = String(c.id).startsWith('temp-') || !c.id
+          if (isTemp) {
+            try {
+              await axios.post('http://localhost:5000/api/cattle', {
+                farmer_id: farmerId,
+                cattle_id: c.cattle_id || undefined,
+                age_range: c.age_range,
+                weight_range: c.weight_range,
+                cattle_type: c.cattle_type,
+              })
+            } catch (err) {
+              console.error('Failed to create new cattle during farmer update:', err)
+            }
+          } else {
+            try {
+              await axios.put(`http://localhost:5000/api/cattle/${c.id}`, {
+                age_range: c.age_range,
+                weight_range: c.weight_range,
+                cattle_type: c.cattle_type,
+              })
+            } catch (err) {
+              console.warn('Failed to update existing cattle (non-fatal):', err)
+            }
+          }
+        }
+
+        await dispatch(fetchDistributors())
+        await dispatch(fetchFarmerById(farmerId)).unwrap()
+      }
+
+      setIsFarmerFormOpen(false)
+    } catch (err) {
+      console.error('Failed to save farmer:', err)
+      alert('Failed to save farmer. See console for details.')
+    }
+  }
+
+  // ---------------- Delete farmer ----------------
   const confirmDeleteFarmer = (farmerId) => {
     setDeleteTargetFarmerId(farmerId)
     setShowConfirmModal(true)
   }
 
   const handleConfirmModal = async () => {
-    const distributorId = currentDistributor?.id
-    if (!distributorId || !deleteTargetFarmerId) return
-    await dispatch(deleteFarmer(deleteTargetFarmerId)).unwrap()
-    setDeleteTargetFarmerId(null)
-    setShowConfirmModal(false)
-    await dispatch(fetchDistributors())
+    const farmerId = deleteTargetFarmerId
+    if (!farmerId) return
+    try {
+      await dispatch(deleteFarmer(farmerId)).unwrap()
+      await dispatch(fetchDistributors())
+      setShowConfirmModal(false)
+      setDeleteTargetFarmerId(null)
+    } catch (err) {
+      console.error('Failed to delete farmer:', err)
+      alert('Failed to delete farmer.')
+    }
   }
 
-
+  // ---------------- UI ----------------
   return (
     <>
       <motion.div
@@ -377,8 +448,8 @@ const handleEditFarmer = async (farmer) => {
         onCancel={() => { setShowConfirmModal(false); setDeleteTargetFarmerId(null) }}
       />
 
-<FarmerForm 
-distributor={currentDistributor}
+      <FarmerForm
+        distributor={currentDistributor}
         isOpen={isFarmerFormOpen}
         onClose={() => setIsFarmerFormOpen(false)}
         onSave={handleSaveFarmer}

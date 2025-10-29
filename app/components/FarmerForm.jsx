@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import {
   fetchDistributors,
@@ -9,11 +9,12 @@ import {
   createCattle,
   updateCattle,
   deleteCattle,
-  fetchAllCattle,
+  fetchCattle,
 } from '@/app/redux/distributorsSlice'
 import { X, ChevronDown, Pencil, Trash2, Check, XCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { v4 as uuidv4 } from 'uuid' // used only for client-temp ids; add `uuid` to your deps if not present
+import ConfirmationModal from './ConfirmationModal' // <- modal you provided
 
 // ---------------- Helper Components ----------------
 const FormInput = ({ label, id, name, placeholder, type = 'text', value, onChange, disabled = false }) => (
@@ -73,6 +74,22 @@ const AccordionSection = ({ title, isOpen, onToggle, children }) => (
   </div>
 )
 
+// ---------------- Utility: map DB record <-> UI record ----------------
+const normalizeCattleFromServer = (r) => ({
+  id: r.id,
+  cattleId: r.cattle_id,
+  age: r.age_range,
+  weight: r.weight_range,
+  type: r.cattle_type,
+})
+
+const serverPayloadFromUI = (ui) => ({
+  // `ui` may be { age, weight, type } plus we set cattle_id and farmer_id externally
+  age_range: ui.age,
+  weight_range: ui.weight,
+  cattle_type: ui.type,
+})
+
 // ---------------- Main Component ----------------
 const FarmerForm = ({
   distributor,              // distributor prop
@@ -85,7 +102,8 @@ const FarmerForm = ({
   titleOverride,
 }) => {
   const dispatch = useDispatch()
-  const { data: distributors, loading, selectedDistributor } = useSelector(state => state.distributors)
+  // slice structure expects state.distributors to contain arrays: distributors, farmers, cattle
+  const { distributors, farmers, cattle, loading, selectedDistributor } = useSelector(state => state.distributors)
 
   const defaultFarmerState = {
     distributor_id: distributor?.id || '',
@@ -99,52 +117,73 @@ const FarmerForm = ({
     city: '',
     pinCode: '',
     aadharNo: '',
+    status: 'Active',
   }
 
-  // When creating cattle before farmer exists, we need local temp ids.
-  // We'll convert them after farmer is created by saving to backend.
+  // local UI state (farmer details + cattle list)
   const [farmerDetails, setFarmerDetails] = useState(initialData?.farmerDetails || defaultFarmerState)
+  // UI cattle items use fields: id (temp or server id), age, weight, type
   const [cattleList, setCattleList] = useState(initialData?.cattleList?.map(c => ({ ...c })) || [])
   const [cattleInput, setCattleInput] = useState({ age: '2-5 years', weight: '680-1090', type: 'Cow', total: 1 })
   const [openSections, setOpenSections] = useState({ farmerDetails: true, cattleDetails: true })
   const [editCattleId, setEditCattleId] = useState(null)
   const [isAddingCattle, setIsAddingCattle] = useState(!initialData?.cattleList?.length)
 
+  // Pending operations to apply on Save
+  const [deletedCattleIds, setDeletedCattleIds] = useState([]) // real ids scheduled for delete
+  const [pendingUpdatedCattle, setPendingUpdatedCattle] = useState({}) // { [id]: { age, weight, type } }
+
+  // Confirmation modal state
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState('')
+  const [confirmDesc, setConfirmDesc] = useState('')
+  const [confirmConfirmText, setConfirmConfirmText] = useState('Yes')
+  const [confirmCancelText, setConfirmCancelText] = useState('No')
+  const [confirmClassName, setConfirmClassName] = useState('text-red-600 font-semibold')
+  const [confirmAction, setConfirmAction] = useState(() => () => {}) // function to run on confirm
+
   // fetch distributors when modal opens
   useEffect(() => {
     if (isOpen) dispatch(fetchDistributors())
   }, [dispatch, isOpen])
 
-  // prefill distributor_id when distributor changes
+  // prefill distributor_id when distributor prop changes
   useEffect(() => {
     if (distributor) {
       setFarmerDetails(prev => ({ ...prev, distributor_id: distributor.id }))
     }
   }, [distributor])
 
-  // when edit mode and initialData provided, set states
+  // when edit mode and initialData provided, set states and fetch cattle for this farmer
   useEffect(() => {
     if (mode === 'edit' && initialData) {
       setFarmerDetails(initialData.farmerDetails || defaultFarmerState)
-      // make sure cattleList references are fresh copies
       setCattleList((initialData.cattleList || []).map(c => ({ ...c })))
-      // fetch cattle from backend if farmer id exists (keeps store in sync)
-const farmerId = initialData.farmerDetails?.farmerId || initialData.farmerDetails?.id
-const distributorId = distributor?.id // ✅ Use the distributor prop directly
-console.log(distributorId)
-if (farmerId && distributorId) {
-  dispatch(fetchAllCattle({ distributorId, farmerId }))
-    .then(resp => {
-      if (resp?.payload?.length) setCattleList(resp.payload)
-    })
-}
+      setDeletedCattleIds([])
+      setPendingUpdatedCattle({})
+
+      // fetch all cattle and filter by farmer id (since APIs are flat)
+      const farmerId = initialData.farmerDetails?.farmerId || initialData.farmerDetails?.id
+      if (farmerId) {
+        dispatch(fetchCattle())
+          .then(resp => {
+            const all = resp?.payload || []
+            const filtered = all
+              .filter(x => x.farmer_id === farmerId)
+              .map(normalizeCattleFromServer)
+            if (filtered.length) setCattleList(filtered)
+          })
+          .catch(err => {
+            console.error('Failed to fetch cattle for farmer:', err)
+          })
+      }
     } else if (mode === 'add') {
       setFarmerDetails(defaultFarmerState)
       setCattleList([])
+      setDeletedCattleIds([])
+      setPendingUpdatedCattle({})
     }
-  }, [mode, initialData, dispatch, distributor])
-
-  if (!isOpen) return null
+  }, [mode, initialData, dispatch])
 
   // ---------- Handlers ----------
   const handleFarmerChange = e => {
@@ -159,46 +198,40 @@ if (farmerId && distributorId) {
 
   const handleToggleSection = section => setOpenSections(prev => ({ ...prev, [section]: !prev[section] }))
 
+  // confirmation helper
+  const openConfirm = ({ title = 'Confirm', description = '', confirmText = 'Yes', cancelText = 'No', className = 'text-red-600 font-semibold', action = () => {} }) => {
+    setConfirmTitle(title)
+    setConfirmDesc(description)
+    setConfirmConfirmText(confirmText)
+    setConfirmCancelText(cancelText)
+    setConfirmClassName(className)
+    setConfirmAction(() => action)
+    setConfirmOpen(true)
+  }
+
+  const closeConfirm = () => {
+    setConfirmOpen(false)
+    // small delay clear to avoid stale closures (not strictly required)
+    setTimeout(() => {
+      setConfirmAction(() => () => {})
+    }, 200)
+  }
+
   // Generate a temp client id for new cattle when farmer does not exist yet.
   const makeTempCattleId = () => `temp-${uuidv4()}`
 
-  const handleAddCattle = async () => {
+  // Add cattle locally (always use temp ids). Changes only applied to backend on Save.
+  const handleAddCattle = () => {
     const total = parseInt(cattleInput.total)
     if (!total || total <= 0) { alert('Enter valid number'); return }
 
-    // When editing an existing farmer (mode === 'edit'), we should create each cattle on backend immediately
-    if (mode === 'edit' && farmerDetails.farmerId) {
-      const created = []
-      for (let i = 0; i < total; i++) {
-        const payload = {
-          age: cattleInput.age,
-          weight: cattleInput.weight,
-          type: cattleInput.type,
-        }
-        try {
-          const res = await dispatch(createCattle({
-            distributorId: farmerDetails.distributor_id,
-            farmerId: farmerDetails.farmerId,
-            cattle: payload
-          })).unwrap()
-          // server returns saved cattle (with real id)
-          created.push(res)
-        } catch (err) {
-          console.error('Failed to create cattle:', err)
-          alert('Failed to add one or more cattle. Check console.')
-        }
-      }
-      setCattleList(prev => [...prev, ...created])
-    } else {
-      // add locally with temp IDs until farmer is created
-      const newEntries = []
-      for (let i = 0; i < total; i++) {
-        const id = makeTempCattleId()
-        const { total: _t, ...data } = cattleInput
-        newEntries.push({ id, ...data })
-      }
-      setCattleList(prev => [...prev, ...newEntries])
+    const newEntries = []
+    for (let i = 0; i < total; i++) {
+      const id = makeTempCattleId()
+      const { total: _t, ...data } = cattleInput
+      newEntries.push({ id, ...data })
     }
+    setCattleList(prev => [...prev, ...newEntries])
 
     setCattleInput({ age: '2-5 years', weight: '680-1090', type: 'Cow', total: 1 })
     setIsAddingCattle(false)
@@ -210,63 +243,90 @@ if (farmerId && distributorId) {
     setIsAddingCattle(false)
   }
 
-  const handleUpdateCattle = async () => {
+  // Update cattle locally. If it's a real id, add to pendingUpdatedCattle so save will persist it.
+  const handleUpdateCattle = () => {
     if (!editCattleId) return
 
-    // If cattle id is a temp id (client-only), update local list only
     if (String(editCattleId).startsWith('temp-')) {
       setCattleList(prev => prev.map(c =>
         c.id === editCattleId ? { ...c, age: cattleInput.age, weight: cattleInput.weight, type: cattleInput.type } : c
       ))
     } else {
-      // persist update to backend
-      try {
-        const res = await dispatch(updateCattle({
-          distributorId: farmerDetails.distributor_id,
-          farmerId: farmerDetails.farmerId,
-          cattleId: editCattleId,
-          updates: { age: cattleInput.age, weight: cattleInput.weight, type: cattleInput.type }
-        })).unwrap()
-        // overwrite in local list with server-returned record
-        setCattleList(prev => prev.map(c => (c.id === res.id ? res : c)))
-      } catch (err) {
-        console.error('Failed to update cattle:', err)
-        alert('Failed to update cattle. Check console.')
-      }
+      setCattleList(prev => prev.map(c =>
+        c.id === editCattleId ? { ...c, age: cattleInput.age, weight: cattleInput.weight, type: cattleInput.type } : c
+      ))
+
+      setPendingUpdatedCattle(prev => ({
+        ...prev,
+        [editCattleId]: { age: cattleInput.age, weight: cattleInput.weight, type: cattleInput.type }
+      }))
     }
 
     setEditCattleId(null)
     setCattleInput({ age: '2-5 years', weight: '680-1090', type: 'Cow', total: 1 })
   }
 
-  const handleDeleteCattle = async (id) => {
-    if (!window.confirm('Delete this cattle entry?')) return
+  // schedule deletion through confirmation modal
+  const scheduleDeleteCattle = (id) => {
+    // remove from UI immediately
+    setCattleList(prev => prev.filter(c => c.id !== id))
 
-    // If temp id => just remove locally
-    if (String(id).startsWith('temp-')) {
-      setCattleList(prev => prev.filter(c => c.id !== id))
-      return
-    }
+    // schedule delete for Save
+    setDeletedCattleIds(prev => {
+      if (prev.includes(id)) return prev
+      return [...prev, id]
+    })
 
-    // If in edit mode and real id, call backend then remove
-    try {
-      if (mode === 'edit') {
-        await dispatch(deleteCattle({
-          distributorId: farmerDetails.distributor_id,
-          farmerId: farmerDetails.farmerId,
-          cattleId: id
-        })).unwrap()
+    // remove any pending update for this id
+    setPendingUpdatedCattle(prev => {
+      if (!prev[id]) return prev
+      const copy = { ...prev }
+      delete copy[id]
+      return copy
+    })
+  }
+
+  // Handler to open confirm modal for cattle deletion
+  const handleDeleteCattle = (id) => {
+    openConfirm({
+      title: 'Delete Cattle',
+      description: 'Are you sure you want to delete this cattle entry? This will remove it on save.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      className: 'text-red-600 font-semibold',
+      action: () => {
+        scheduleDeleteCattle(id)
+        closeConfirm()
       }
-      setCattleList(prev => prev.filter(c => c.id !== id))
-    } catch (err) {
-      console.error('Failed to delete cattle:', err)
-      alert('Failed to delete cattle. Check console.')
-    }
+    })
+  }
+
+  // delete farmer (use confirmation modal)
+  const confirmDeleteFarmer = () => {
+    openConfirm({
+      title: 'Delete Farmer',
+      description: 'Are you sure you want to delete this farmer? This action cannot be undone.',
+      confirmText: 'Yes, Delete',
+      cancelText: 'No',
+      className: 'text-red-600 font-semibold',
+      action: async () => {
+        try {
+          // call provided onDelete (your parent handles dispatch)
+          onDelete?.(farmerDetails)
+        } catch (err) {
+          console.error('Failed to delete farmer:', err)
+        } finally {
+          closeConfirm()
+          onClose()
+        }
+      }
+    })
   }
 
   // When saving the whole farmer (create or update)
   const handleMainSave = async () => {
     const payload = {
+      distributor_id: farmerDetails.distributor_id,
       farmer_name: farmerDetails.farmerName,
       whatsapp_no: farmerDetails.whatsappNo,
       phone_no: farmerDetails.phoneNo,
@@ -276,79 +336,193 @@ if (farmerId && distributorId) {
       city: farmerDetails.city,
       pin_code: farmerDetails.pinCode,
       aadhar_no: farmerDetails.aadharNo,
-      total_cattle: cattleList.filter(c => !String(c.id).startsWith('temp-')).length + cattleList.filter(c => String(c.id).startsWith('temp-')).length,
+      total_cattle: cattleList.length,
+      status: farmerDetails.status,
     }
 
     try {
       if (mode === 'edit') {
-        // update farmer
-        const updatedFarmer = await dispatch(updateFarmer({
-          distributorId: farmerDetails.distributor_id,
-          farmerId: farmerDetails.farmerId,
-          updates: payload
-        })).unwrap()
-        // if there remain any temp-cattle (shouldn't normally happen in edit mode) create them now
-        const temps = cattleList.filter(c => String(c.id).startsWith('temp-'))
-        for (const t of temps) {
-          const res = await dispatch(createCattle({
-            distributorId: farmerDetails.distributor_id,
-            farmerId: farmerDetails.farmerId,
-            cattle: { age: t.age, weight: t.weight, type: t.type }
-          })).unwrap()
-          // replace temp with server record
-          setCattleList(prev => prev.map(c => c.id === t.id ? res : c))
+        // 🧠 Check if farmer details actually changed
+        const currentFarmer = farmers?.find(f => f.id === farmerDetails.farmerId)
+        const hasFarmerChanges =
+          currentFarmer &&
+          Object.keys(payload).some(key => currentFarmer[key] !== payload[key])
+
+        const hasTempCattle = cattleList.some(c => String(c.id).startsWith('temp-'))
+        const hasDeletedCattle = deletedCattleIds.length > 0
+        const hasPendingUpdates = Object.keys(pendingUpdatedCattle).length > 0
+
+        // If nothing changed, close
+        if (!hasFarmerChanges && !hasTempCattle && !hasDeletedCattle && !hasPendingUpdates) {
+          console.log('No changes detected, skipping update.')
+          onClose()
+          return
         }
 
-        console.log('Farmer updated successfully', updatedFarmer)
-      } else {
-        // create farmer first
-        const createdFarmer = await dispatch(createFarmer({
-          distributorId: farmerDetails.distributor_id,
-          farmer: payload
-        })).unwrap()
+        // Update farmer if needed
+        if (hasFarmerChanges) {
+          await dispatch(updateFarmer({ id: farmerDetails.farmerId, updates: payload })).unwrap()
+          console.log('✅ Farmer updated successfully')
+        }
 
-        // If we created the farmer, create cattle that were added locally (temps)
+        // Create temp cattle on backend
+        if (hasTempCattle) {
+          const temps = cattleList.filter(c => String(c.id).startsWith('temp-'))
+          for (const t of temps) {
+            try {
+              const createPayload = {
+                farmer_id: farmerDetails.farmerId,
+                cattle_id: uuidv4(),
+                ...serverPayloadFromUI(t),
+              }
+              const res = await dispatch(createCattle(createPayload)).unwrap()
+              setCattleList(prev =>
+                prev.map(c => (c.id === t.id ? normalizeCattleFromServer(res) : c))
+              )
+            } catch (err) {
+              console.error('❌ Failed to create cattle after farmer update:', err)
+            }
+          }
+        }
+
+        // Apply pending updates
+        if (Object.keys(pendingUpdatedCattle).length > 0) {
+          for (const [id, upd] of Object.entries(pendingUpdatedCattle)) {
+            try {
+              const updates = {
+                age_range: upd.age,
+                weight_range: upd.weight,
+                cattle_type: upd.type,
+              }
+              const res = await dispatch(updateCattle({ id, updates })).unwrap()
+              const normalized = normalizeCattleFromServer(res)
+              setCattleList(prev => prev.map(c => (c.id === normalized.id ? normalized : c)))
+            } catch (err) {
+              console.error(`❌ Failed to update cattle ${id}:`, err)
+            }
+          }
+          setPendingUpdatedCattle({})
+        }
+
+        // Delete scheduled cattle
+        if (hasDeletedCattle) {
+          for (const id of deletedCattleIds) {
+            try {
+              await dispatch(deleteCattle(id)).unwrap()
+              console.log(`🗑️ Deleted cattle ${id}`)
+            } catch (err) {
+              console.error(`❌ Failed to delete cattle ${id}:`, err)
+            }
+          }
+          setDeletedCattleIds([]) // clear after successful deletion
+        }
+
+      } else {
+        // Create new farmer first
+        const createdFarmer = await dispatch(createFarmer(payload)).unwrap()
+        setFarmerDetails(prev => ({ ...prev, farmerId: createdFarmer.id }))
+
+        // Create cattle added locally
         const temps = cattleList.filter(c => String(c.id).startsWith('temp-'))
         const createdCattle = []
         for (const t of temps) {
           try {
-            const res = await dispatch(createCattle({
-              distributorId: createdFarmer.distributor_id,
-              farmerId: createdFarmer.id || createdFarmer.farmerId || createdFarmer._id,
-              cattle: { age: t.age, weight: t.weight, type: t.type }
-            })).unwrap()
-            createdCattle.push(res)
+            const createPayload = {
+              farmer_id: createdFarmer.id,
+              cattle_id: uuidv4(),
+              ...serverPayloadFromUI(t),
+            }
+            const res = await dispatch(createCattle(createPayload)).unwrap()
+            createdCattle.push(normalizeCattleFromServer(res))
           } catch (err) {
-            console.error('Failed to create cattle after farmer creation:', err)
+            console.error('❌ Failed to create cattle after farmer creation:', err)
           }
         }
-        // set local cattleList to the created ones (backend ids)
+
         setCattleList(prev => {
           const nonTemps = prev.filter(c => !String(c.id).startsWith('temp-'))
           return [...nonTemps, ...createdCattle]
         })
 
-        console.log('Farmer created successfully', createdFarmer)
+        console.log('✅ Farmer created successfully', createdFarmer)
       }
 
+      // After successful local updates, close and trigger parent onSave
       onClose()
       onSave?.()
+
     } catch (err) {
-      console.error('Failed to save farmer:', err)
+      console.error('❌ Failed to save farmer:', err)
       alert('Failed to save farmer. Check console for details.')
     }
   }
 
+  // wrapper to confirm save before executing handleMainSave
+  const confirmAndSave = () => {
+    openConfirm({
+      title: mode === 'edit' ? 'Confirm Update' : 'Confirm Save',
+      description: mode === 'edit'
+        ? 'Are you sure you want to save the changes to this farmer (includes pending cattle changes)?'
+        : 'Are you sure you want to save this new farmer and its cattle?',
+      confirmText: mode === 'edit' ? 'Save Changes' : 'Save',
+      cancelText: 'Cancel',
+      className: 'text-green-600 font-semibold',
+      action: async () => {
+        try {
+          await handleMainSave()
+        } finally {
+          closeConfirm()
+        }
+      }
+    })
+  }
+
   const handleDeleteFarmer = () => {
-    if (window.confirm('Are you sure you want to delete this farmer?')) {
-      onDelete?.(farmerDetails)
-      onClose()
-    }
+    // Keep old semantics but use modal
+    confirmDeleteFarmer()
   }
 
   const totalCattleCount = cattleList.length
   const title = titleOverride || (mode === 'edit' ? 'Edit Farmer' : 'New Farmer')
   const saveButtonText = mode === 'edit' ? 'Save Changes' : 'Save'
+
+  // ---------- Dirty-checking logic to enable/disable Save ----------
+  const isFarmerChanged = useMemo(() => {
+    if (mode === 'edit') {
+      const currentFarmer = farmers?.find(f => f.id === farmerDetails.farmerId)
+      if (!currentFarmer) return true
+      const payload = {
+        distributor_id: farmerDetails.distributor_id,
+        farmer_name: farmerDetails.farmerName,
+        whatsapp_no: farmerDetails.whatsappNo,
+        phone_no: farmerDetails.phoneNo,
+        email: farmerDetails.email,
+        address: farmerDetails.address,
+        state: farmerDetails.state,
+        city: farmerDetails.city,
+        pin_code: farmerDetails.pinCode,
+        aadhar_no: farmerDetails.aadharNo,
+        total_cattle: cattleList.length,
+        status: farmerDetails.status,
+      }
+      return Object.keys(payload).some(key => currentFarmer[key] !== payload[key])
+    } else {
+      // add mode: if any non-default field provided, treat as changed
+      return Object.keys(defaultFarmerState).some(k => {
+        if (k === 'distributor_id') return (farmerDetails.distributor_id || '') !== (defaultFarmerState.distributor_id || '')
+        return (farmerDetails[k] || '') !== (defaultFarmerState[k] || '')
+      })
+    }
+  }, [mode, farmerDetails, farmers, cattleList.length])
+
+  const hasTempCattle = cattleList.some(c => String(c.id).startsWith('temp-'))
+  const hasPendingUpdates = Object.keys(pendingUpdatedCattle).length > 0
+  const hasDeletedCattle = deletedCattleIds.length > 0
+
+  const isDirty = isFarmerChanged || hasTempCattle || hasPendingUpdates || hasDeletedCattle
+
+  // <<--- IMPORTANT: only return null here AFTER hooks & memos have run, so hook order never changes
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center p-4 z-50">
@@ -391,6 +565,10 @@ if (farmerId && distributorId) {
               <FormInput label="City" id="city" name="city" placeholder="Enter city" value={farmerDetails.city} onChange={handleFarmerChange} />
               <FormInput label="Pin Code" id="pinCode" name="pinCode" placeholder="Enter pincode" value={farmerDetails.pinCode} onChange={handleFarmerChange} />
               <FormInput label="Aadhar No." id="aadharNo" name="aadharNo" placeholder="Enter Aadhar No." value={farmerDetails.aadharNo} onChange={handleFarmerChange} />
+              <FormSelect label="Status" id="status" name="status" value={farmerDetails.status} onChange={handleFarmerChange}>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </FormSelect>
               <FormInput label="Total No. of Cattle" id="totalCattle" name="totalCattle" value={totalCattleCount} disabled />
             </div>
           </AccordionSection>
@@ -456,7 +634,7 @@ if (farmerId && distributorId) {
                   <tbody>
                     {cattleList.map(cattle => (
                       <tr key={cattle.id} className="border-t hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-2">{cattle.id}</td>
+                        <td className="px-4 py-2">{cattle.cattleId ?? cattle.id}</td>
                         <td className="px-4 py-2">{cattle.age}</td>
                         <td className="px-4 py-2">{cattle.weight}</td>
                         <td className="px-4 py-2">{cattle.type}</td>
@@ -477,9 +655,39 @@ if (farmerId && distributorId) {
 
         <div className="flex justify-end gap-4 px-6 py-4 border-t bg-white">
           <button onClick={onClose} className="bg-gray-200 text-gray-700 px-5 py-2 rounded-md hover:bg-gray-300">Cancel</button>
-          <button onClick={handleMainSave} className="bg-[#b91c1c] text-white px-5 py-2 rounded-md hover:bg-[#991b1b]">{saveButtonText}</button>
+          <button
+            onClick={confirmAndSave}
+            disabled={!isDirty}
+            className={`px-5 py-2 rounded-md ${isDirty ? 'bg-[#b91c1c] text-white hover:bg-[#991b1b]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          >
+            {saveButtonText}
+          </button>
         </div>
       </div>
+
+      {/* Confirmation modal reused for all confirmations */}
+      <ConfirmationModal
+        isOpen={confirmOpen}
+        title={confirmTitle}
+        description={confirmDesc}
+        onCancel={() => {
+          closeConfirm()
+        }}
+        onConfirm={() => {
+          try {
+            confirmAction()
+          } catch (err) {
+            console.error('Error running confirm action:', err)
+          } finally {
+            // the specific action should call closeConfirm when appropriate,
+            // but close here as a safe fallback
+            closeConfirm()
+          }
+        }}
+        cancelText={confirmCancelText}
+        confirmText={confirmConfirmText}
+        confirmClassName={confirmClassName}
+      />
     </div>
   )
 }

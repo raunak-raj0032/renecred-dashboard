@@ -1,0 +1,6 @@
+- [x] Update distributorService.js: Remove references to non-existent 'inwards' table from select queries
+- [x] Update farmerService.js: Add 'status' field to farmer creation and updates, ensure all field names match schema (snake_case)
+- [x] Update cattleService.js: Ensure cattle_id is handled as text, not UUID
+- [x] Update distributorService.js selects to match schema fields exactly
+- [x] Update farmerService.js selects to include 'status' and match schema
+- [x] Test the changes by running the server

@@ -4,7 +4,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import axios from 'axios'
 
 // ==============================
-// 🔹 API Base
+// 🔹 API Base URL
 // ==============================
 const API_URL = 'http://localhost:5000/api/farmers'
 
@@ -13,51 +13,73 @@ const API_URL = 'http://localhost:5000/api/farmers'
 // ==============================
 
 // GET all farmers
-export const fetchFarmers = createAsyncThunk('farmers/fetchAll', async () => {
-  const { data } = await axios.get(API_URL)
-  return data
+export const fetchFarmers = createAsyncThunk('farmers/fetchAll', async (_, { rejectWithValue }) => {
+  try {
+    const { data } = await axios.get(API_URL)
+    return data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to fetch farmers')
+  }
 })
 
 // GET one farmer by ID
-export const fetchFarmerById = createAsyncThunk('farmers/fetchById', async (id) => {
-  const { data } = await axios.get(`${API_URL}/${id}`)
-  return data
+export const fetchFarmerById = createAsyncThunk('farmers/fetchById', async (id, { rejectWithValue }) => {
+  try {
+    const { data } = await axios.get(`${API_URL}/${id}`)
+    return data
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to fetch farmer')
+  }
 })
 
-// GET all farmers under a distributor
+// GET all farmers under a specific distributor
 export const fetchFarmersByDistributor = createAsyncThunk(
   'farmers/fetchByDistributor',
-  async (distributorId) => {
-    const { data } = await axios.get(`${API_URL}/distributor/${distributorId}`)
-    return data
+  async (distributorId, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.get(`${API_URL}/distributor/${distributorId}`)
+      return data
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || 'Failed to fetch farmers by distributor')
+    }
   }
 )
 
-// CREATE new farmer
+// CREATE a new farmer
 export const createFarmer = createAsyncThunk(
   'farmers/create',
-  async ({ distributorId, farmer }) => {
-    const url = distributorId
-      ? `${API_URL}/distributor/${distributorId}`
-      : API_URL
-    const { data } = await axios.post(url, farmer)
-    return data
+  async (farmerData, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.post(API_URL, farmerData)
+      return data
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || 'Failed to create farmer')
+    }
   }
 )
 
-// UPDATE farmer
+// UPDATE existing farmer
 export const updateFarmer = createAsyncThunk(
   'farmers/update',
-  async ({ id, updates }) => {
-    const { data } = await axios.put(`${API_URL}/${id}`, updates)
-    return data
+  async ({ id, updates }, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.put(`${API_URL}/${id}`, updates)
+      return data
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || 'Failed to update farmer')
+    }
   }
 )
 
+
 // DELETE farmer
-export const deleteFarmer = createAsyncThunk('farmers/delete', async (id) => {
-  await axios.delete(`${API_URL}/${id}`)
-  return id
+export const deleteFarmer = createAsyncThunk('farmers/delete', async (id, { rejectWithValue }) => {
+  try {
+    await axios.delete(`${API_URL}/${id}`)
+    return id
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to delete farmer')
+  }
 })
 
 // ==============================
@@ -74,12 +96,17 @@ const initialState = {
 const farmersSlice = createSlice({
   name: 'farmers',
   initialState,
-  reducers: {},
+  reducers: {
+    clearSelectedFarmer: (state) => {
+      state.selectedFarmer = null
+    },
+  },
   extraReducers: (builder) => {
     builder
       // --- Fetch All ---
       .addCase(fetchFarmers.pending, (state) => {
         state.loading = true
+        state.error = null
       })
       .addCase(fetchFarmers.fulfilled, (state, action) => {
         state.loading = false
@@ -87,35 +114,60 @@ const farmersSlice = createSlice({
       })
       .addCase(fetchFarmers.rejected, (state, action) => {
         state.loading = false
-        state.error = action.error.message || 'Failed to fetch farmers'
+        state.error = action.payload
       })
 
-      // --- Fetch One ---
+      // --- Fetch by ID ---
       .addCase(fetchFarmerById.fulfilled, (state, action) => {
         state.selectedFarmer = action.payload
       })
-
-      // --- Fetch by Distributor ---
-      .addCase(fetchFarmersByDistributor.fulfilled, (state, action) => {
-        state.data = action.payload
+      .addCase(fetchFarmerById.rejected, (state, action) => {
+        state.error = action.payload
       })
 
-      // --- CRUD ---
+      // --- Fetch by Distributor ---
+      .addCase(fetchFarmersByDistributor.pending, (state) => {
+        state.loading = true
+      })
+      .addCase(fetchFarmersByDistributor.fulfilled, (state, action) => {
+        state.loading = false
+        state.data = action.payload
+      })
+      .addCase(fetchFarmersByDistributor.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
+      })
+
+      // --- Create ---
       .addCase(createFarmer.fulfilled, (state, action) => {
         state.data.push(action.payload)
       })
+      .addCase(createFarmer.rejected, (state, action) => {
+        state.error = action.payload
+      })
+
+      // --- Update ---
       .addCase(updateFarmer.fulfilled, (state, action) => {
         const idx = state.data.findIndex((f) => f.id === action.payload.id)
         if (idx !== -1) state.data[idx] = action.payload
         if (state.selectedFarmer?.id === action.payload.id)
           state.selectedFarmer = action.payload
       })
+      .addCase(updateFarmer.rejected, (state, action) => {
+        state.error = action.payload
+      })
+
+      // --- Delete ---
       .addCase(deleteFarmer.fulfilled, (state, action) => {
         state.data = state.data.filter((f) => f.id !== action.payload)
         if (state.selectedFarmer?.id === action.payload)
           state.selectedFarmer = null
       })
+      .addCase(deleteFarmer.rejected, (state, action) => {
+        state.error = action.payload
+      })
   },
 })
 
+export const { clearSelectedFarmer } = farmersSlice.actions
 export default farmersSlice.reducer

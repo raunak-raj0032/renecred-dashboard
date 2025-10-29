@@ -18,15 +18,9 @@ export interface Farmer {
   email: string
   aadhar_no: string
   total_cattle: number
+  status: string
+  distributor_id: string
   cattle: Cattle[]
-}
-
-export interface Inward {
-  id: string
-  dispatch_id: string
-  used_quantity: number
-  total_quantity: number
-  feed_concentrator: string
 }
 
 export interface Distributor {
@@ -39,6 +33,5 @@ export interface Distributor {
   city: string
   state: string
   pin_code: string
-  inwards?: Inward[]
   farmers?: Farmer[]
 }
